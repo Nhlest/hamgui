@@ -1,0 +1,65 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.33.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: eb24ec3f7a1ed6993da13be1e55f734a7e0c604683be09ab86cd56b5385c0b1a
+
+name:           hamgui
+version:        0.1.0.0
+description:    Haskell IMGUI library
+homepage:       https://github.com/githubuser/hamgui#readme
+bug-reports:    https://github.com/githubuser/hamgui/issues
+author:         N`lest
+maintainer:     flutterlice@gmail.com
+copyright:      2020 N`hlest
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/hamgui
+
+library
+  exposed-modules:
+      Graphics.UI.BDF
+      Graphics.UI.BitMapFont
+      Graphics.UI.Lib
+  other-modules:
+      Paths_hamgui
+  hs-source-dirs:
+      src
+  default-extensions: TemplateHaskell FlexibleContexts
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , lens
+    , mtl
+    , parsec
+    , text
+    , vector
+  default-language: Haskell2010
+
+test-suite hamgui-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_hamgui
+  hs-source-dirs:
+      test
+  default-extensions: TemplateHaskell FlexibleContexts
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , hamgui
+    , lens
+    , mtl
+    , parsec
+    , text
+    , vector
+  default-language: Haskell2010

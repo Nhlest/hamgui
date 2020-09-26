@@ -1,0 +1,39 @@
+name:                hamgui
+version:             0.1.0.0
+github:              "githubuser/hamgui"
+license:             MIT 
+author:              "N`lest"
+maintainer:          "flutterlice@gmail.com"
+copyright:           "2020 N`hlest"
+
+extra-source-files:
+- README.md
+
+description:         Haskell IMGUI library
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+- vector
+- parsec
+- lens
+- text
+- mtl
+
+default-extensions:
+- TemplateHaskell
+- FlexibleContexts
+
+library:
+  source-dirs: src
+
+tests:
+  hamgui-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - hamgui
