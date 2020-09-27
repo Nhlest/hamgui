@@ -1,4 +1,4 @@
-module Graphics.UI.Lib where
+module Graphics.UI.HamGui where
 
 import Data.Vector.Storable hiding ((++), forM_)
 import Control.Applicative (liftA)
