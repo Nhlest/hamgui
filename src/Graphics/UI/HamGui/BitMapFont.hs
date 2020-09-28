@@ -1,10 +1,10 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Graphics.UI.BitMapFont where
+module Graphics.UI.HamGui.BitMapFont where
 
-import Data.Map
-import Data.Word
 import Data.Vector.Storable
 import Control.Lens
+import Data.Word
+import Data.Map
 
 data CharacterDefinition = CharDef {
     _charX :: Float,

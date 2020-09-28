@@ -1,16 +1,16 @@
-module Graphics.UI.BDF where
+module Graphics.UI.HamGui.BDF where
 
 import qualified Data.Text.IO         as Text
 import qualified Data.Text            as Text
 import qualified Data.Vector.Storable as V
 import qualified Data.Map             as M
 import Text.ParserCombinators.Parsec
-import Control.Lens (view, _1)
-import Graphics.UI.BitMapFont
 import Data.Bits
 import Data.List
 import Data.Word
 import Numeric
+
+import Graphics.UI.HamGui.BitMapFont
 
 data Property = Property String String deriving Show
 data Character = Character {
@@ -19,7 +19,7 @@ data Character = Character {
     _charDwidth :: (Int, Int),
     _charBbx :: (Int, Int, Int, Int),
     _charBitmap :: [Int]
-  } deriving Show
+  } deriving Show -- TODO: Move to Types maybe? (Or BMF.Types (!))
 
 bdfParser :: GenParser Char st [Character]
 bdfParser = do

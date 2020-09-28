@@ -1,4 +1,4 @@
-module Graphics.UI.HamGui where
+module Graphics.UI.HamGui.HamGui where
 
 import Data.Vector.Storable hiding ((++), forM_)
 import Control.Applicative (liftA)
@@ -10,36 +10,8 @@ import Control.Lens
 import Foreign.Ptr
 import Data.Maybe
 
-import Graphics.UI.BitMapFont
-
-type ScreenPositionTotal = (Float, Float)
-type ScreenPositionProjected = (Int, Int)
-
-newtype ObjectId = ObjectId String deriving (Eq, Ord, Show)
-
-data Object = Object {
-    _boxBox :: (ScreenPositionProjected, ScreenPositionProjected)
-  } deriving Show
-$(makeLenses ''Object)
-
-data Input = Input {
-    _mousePos :: Maybe ScreenPositionProjected,
-    _mouseKeyState :: Maybe (Bool, Bool)
-  }
-$(makeLenses ''Input)
-
-data HamGuiData = HamGuiData {
-    _vertexDataL :: [CFloat],
-    _elemDataL :: [CInt],
-    _vertId :: CInt,
-    _screenSize :: ScreenPositionProjected,
-    _objectData :: M.Map ObjectId Object,
-    _inputs :: Input,
-    _cursorPosition :: (Int, Int)
-  }
-$(makeLenses ''HamGuiData)
-
-type HamGui a = StateT HamGuiData IO a
+import Graphics.UI.HamGui.BitMapFont
+import Graphics.UI.HamGui.Types
 
 toSPT :: ScreenPositionProjected -> HamGui ScreenPositionTotal
 toSPT (x, y) = do
