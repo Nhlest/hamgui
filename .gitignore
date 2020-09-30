@@ -1,4 +1,4 @@
 .stack-work/
-.stack.yaml.lock
+stack.yaml.lock
 hamgui.cabal
 *~

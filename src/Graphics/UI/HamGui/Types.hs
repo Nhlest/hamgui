@@ -1,4 +1,4 @@
-module Graphics.UI.HamGui.Types where 
+module Graphics.UI.HamGui.Types where
 
 import qualified Data.Map.Lazy as M
 import Control.Monad.State.Lazy
@@ -10,8 +10,12 @@ type ScreenPositionProjected = (Int, Int)
 
 newtype ObjectId = ObjectId String deriving (Eq, Ord, Show)
 
+data UIState = Inert | MouseHover ScreenPositionProjected | MouseHeld ScreenPositionProjected deriving Show
+$(makePrisms ''UIState)
+
 data Object = Object {
-    _boxBox :: (ScreenPositionProjected, ScreenPositionProjected)
+    _boxBox :: (ScreenPositionProjected, ScreenPositionProjected),
+    _objectState :: UIState
   } deriving Show
 $(makeLenses ''Object)
 
