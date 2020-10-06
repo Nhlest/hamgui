@@ -1,12 +1,14 @@
 module Graphics.UI.HamGui.HamGui where
 
-import Data.Vector.Storable hiding ((++), forM_)
-import Control.Monad.State.Lazy
+import Data.Vector.Storable hiding ((++), forM_, toList)
+import Control.Monad.State.Strict
 import qualified Data.Map as M
 import Foreign.C.Types
 import Control.Lens
+import qualified Data.Sequence as S
 import Foreign.Ptr
 import Data.Maybe
+import Prelude hiding (length)
 
 import Graphics.UI.HamGui.BitMapFont
 import Graphics.UI.HamGui.Types
@@ -47,15 +49,15 @@ addRect (x0, y0) (sx, sy) (r, g, b) (u0, v0) (u1, v1) = do
   vertId += 4
   pure ()
  where addColor = do
-         vertexDataL <<>= [(CFloat i) | i <- [r, g, b]]
+         vertexDataL <>= [(CFloat r), (CFloat g), (CFloat b)]
        addVertex x y ux uy = do
-         vertexDataL <<>= [(CFloat i) | i <- [x, y]]
+         vertexDataL <>= [(CFloat x), (CFloat y)]
          addColor
-         vertexDataL <<>= [(CFloat ux)]
-         vertexDataL <<>= [(CFloat uy)]
+         vertexDataL <>= [(CFloat ux)]
+         vertexDataL <>= [(CFloat uy)]
        addElem i0 i1 i2 = do
          vertId <- use vertId
-         elemDataL <<>= [(i + vertId) | i <- [i0, i1, i2]]
+         elemDataL <>= [(i0 + vertId), (i1 + vertId), (i2 + vertId)]
 
 addGlyph :: Char -> ScreenPositionTotal -> (Float, Float) -> HamGui ()
 addGlyph ch (x, y) (w, h) = do
@@ -99,8 +101,10 @@ clearBuffers = do
 
 composeBuffers :: (Ptr CFloat -> IO ()) -> (Ptr CInt -> IO ()) -> HamGui ()
 composeBuffers actionA actionE = do
-  dv <- fromList <$> use vertexDataL
-  ev <- fromList <$> use elemDataL
+  ds <- use vertexDataL
+  es <- use elemDataL
+  let dv = unfoldrN (S.length ds) uncons ds
+  let ev = unfoldrN (S.length es) uncons es
   liftIO $ unsafeWith dv actionA
   liftIO $ unsafeWith ev actionE
   pure ()

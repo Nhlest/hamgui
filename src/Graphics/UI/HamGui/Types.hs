@@ -1,8 +1,9 @@
 module Graphics.UI.HamGui.Types where
 
 import qualified Data.Map.Lazy as M
-import Control.Monad.State.Lazy
+import Control.Monad.State.Strict
 import Foreign.C.Types
+import Data.Sequence
 import Control.Lens
 
 import Graphics.UI.HamGui.BitMapFont
@@ -36,8 +37,8 @@ data Input = Input {
 $(makeLenses ''Input)
 
 data HamGuiData = HamGuiData {
-    _vertexDataL :: [CFloat],
-    _elemDataL :: [CInt],
+    _vertexDataL :: Seq CFloat,
+    _elemDataL :: Seq CInt,
     _vertId :: CInt,
     _screenSize :: ScreenPositionProjected,
     _objectData :: M.Map ObjectId Object,

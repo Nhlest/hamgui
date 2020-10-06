@@ -23,6 +23,7 @@ dependencies:
 default-extensions:
 - TemplateHaskell
 - FlexibleContexts
+- OverloadedLists
 
 library:
   source-dirs: src
