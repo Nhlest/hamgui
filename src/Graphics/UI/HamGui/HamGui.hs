@@ -144,55 +144,64 @@ genericObjectInputCheck oId = do
   when justClickedStatus $ focusedObject .= Just oId
   pure justClickedStatus
 
-button :: ObjectId -> String -> HamGui Bool
-button oId label = do
-  clicked <- genericObjectInputCheck oId
-  let buttonBoxSize = (200, 50)
+fitBoxOfSize :: ScreenPositionProjected -> HamGui (ScreenPositionProjected, ScreenPositionProjected, ScreenPositionTotal, ScreenPositionTotal)
+fitBoxOfSize (w, h) = do
   cursorP        <- use cursorPosition
   cursor         <- toSPT cursorP
-  buttonBoxSizeT <- toSPTU buttonBoxSize
-  isFocused      <- fromMaybe False <$> ((fmap . fmap) ((==) oId) $ use focusedObject)
-  cursorPosition .= (fst cursorP, snd cursorP - snd buttonBoxSize - 10)
+  boxSizeT       <- toSPTU (w, h)
+  cursorPosition .= (fst cursorP, snd cursorP - h - 10)
+  pure (cursorP, (w, h), cursor, boxSizeT)
+
+isObjFocused :: ObjectId -> HamGui Bool
+isObjFocused oId = fromMaybe False <$> ((fmap . fmap) ((==) oId) $ use focusedObject)
+
+isObjHeld :: ObjectId -> HamGui Bool
+isObjHeld oId = do
   dataFromLastFrame <- M.lookup oId <$> use objectData
-  let a = dataFromLastFrame ^? _Just . objectState . _MouseHeld
-  objectData %= M.insertWith
-    (\(Object a _ c) (Object _ b _) -> Object a b c)
-    oId
-    (Object (cursorP, buttonBoxSize) Inert SButton)
-  addRectWithBorder cursor buttonBoxSizeT
-    (if (isJust a)     then (0.0, 0.0, 1.0)
-     else if isFocused then (0.0, 0.0, 0.5)
-                       else (1.0, 0.0, 0.0)) (0.5, 1.0, 0.0)
-  textPos <- toSPT ((fromIntegral $ fst cursorP) + 10, (fromIntegral $ snd cursorP) + 10)
+  pure $ isJust $ dataFromLastFrame ^? _Just . objectState . _MouseHeld
+
+updateObjData :: ObjectId -> (ScreenPositionProjected, ScreenPositionProjected) -> ObjectState -> HamGui ()
+updateObjData oId box st = objectData %= M.insertWith (\(Object a _ _) (Object _ b _) -> Object a b st) oId (Object box Inert st)
+
+getPrimaryColor isHeld isFocused = pure $
+  (if isHeld         then (0.0, 0.0, 1.0)
+   else if isFocused then (0.0, 0.0, 0.5)
+                     else (1.0, 0.0, 0.0))
+
+getSecondaryColor isHeld isFocused = pure (0.5, 1.0, 0.0)
+
+fitTextLabel :: ScreenPositionProjected -> ScreenPositionProjected -> HamGui (ScreenPositionTotal)
+fitTextLabel rect rectsize = toSPT ((fromIntegral $ fst rect) + 10, (fromIntegral $ snd rect) + 10)
+
+button :: ObjectId -> String -> HamGui Bool
+button oId label = do
+  clicked                            <- genericObjectInputCheck oId
+  (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (200, 50)
+  isFocused                          <- isObjFocused oId
+  isHeld                             <- isObjHeld oId
+  primaryColor                       <- getPrimaryColor isHeld isFocused
+  secondaryColor                     <- getSecondaryColor isHeld isFocused
+  textPos                            <- fitTextLabel rect rectsize
+  updateObjData     oId (rect, rectsize) SButton
+  addRectWithBorder rectT rectsizeT primaryColor secondaryColor
   addText label textPos (2, 2)
   pure clicked
 
-textInput :: ObjectId -> HamGui Bool
+textInput :: ObjectId -> HamGui String
 textInput oId = do
-  clicked <- genericObjectInputCheck oId
-  let buttonBoxSize = (400, 50)
-  cursorP        <- use cursorPosition
-  cursor         <- toSPT cursorP
-  isFocused      <- fromMaybe False <$> ((fmap . fmap) ((==) oId) $ use focusedObject)
-  object         <- (M.lookup oId <$> use objectData)
-  let labelText   = fromMaybe "" $ object ^? _Just . privateState . _STextInput
-  buttonBoxSizeT <- toSPTU buttonBoxSize
-  cursorPosition .= (fst cursorP, snd cursorP - snd buttonBoxSize - 10)
-  dataFromLastFrame <- M.lookup oId <$> use objectData
-  let a = dataFromLastFrame ^? _Just . objectState . _MouseHeld
-  addRectWithBorder cursor buttonBoxSizeT
-    (if (isJust a)     then (0.0, 0.0, 1.0)
-     else if isFocused then (0.0, 0.0, 0.5)
-                       else (1.0, 0.0, 0.0)) (0.5, 1.0, 0.0)
-  textPos <- toSPT ((fromIntegral $ fst cursorP) + 10, (fromIntegral $ snd cursorP) + 10)
-  charsFromKeyboard <- fromMaybe "" <$> use (inputs . alphaNumPressed)
+  _                                  <- genericObjectInputCheck oId
+  (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (200, 50)
+  isFocused                          <- isObjFocused oId
+  isHeld                             <- isObjHeld oId
+  primaryColor                       <- getPrimaryColor isHeld isFocused
+  secondaryColor                     <- getSecondaryColor isHeld isFocused
+  textPos                            <- fitTextLabel rect rectsize
+  object                             <- M.lookup oId <$> use objectData
+  charsFromKeyboard                  <- fromMaybe "" <$> use (inputs . alphaNumPressed)
+  let labelText                       = fromMaybe "" $ object ^? _Just . privateState . _STextInput
   let newLabel = if isFocused then labelText ++ charsFromKeyboard else labelText
-  if isFocused
-  then inputs . alphaNumPressed .= Nothing
-  else pure ()
-  objectData %= M.insertWith
-    (\(Object a _ _) (Object _ b _) -> Object a b $ STextInput newLabel)
-    oId
-    (Object (cursorP, buttonBoxSize) Inert $ STextInput newLabel)
+  void $         if isFocused then inputs . alphaNumPressed .= Nothing else pure ()
+  updateObjData     oId (rect, rectsize) $ STextInput newLabel
+  addRectWithBorder rectT rectsizeT primaryColor secondaryColor
   addText newLabel textPos (2, 2)
-  pure clicked
+  pure newLabel
