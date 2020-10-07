@@ -1,17 +1,19 @@
+{-# LANGUAGE RankNTypes, TypeFamilies #-}
 module Graphics.UI.HamGui.HamGui where
 
-import Data.Vector.Storable hiding ((++), forM_, toList)
+import qualified Data.Vector.Storable.Mutable as MV
 import Control.Monad.State.Strict
 import qualified Data.Map as M
 import Foreign.C.Types
 import Control.Lens
-import qualified Data.Sequence as S
+import qualified Language.C.Inline as C
 import Foreign.Ptr
 import Data.Maybe
-import Prelude hiding (length)
 
 import Graphics.UI.HamGui.BitMapFont
 import Graphics.UI.HamGui.Types
+
+C.context (C.baseCtx <> C.vecCtx)
 
 toSPT :: ScreenPositionProjected -> HamGui ScreenPositionTotal
 toSPT (x, y) = do
@@ -38,26 +40,41 @@ uploadAlphaNums :: String -> HamGui ()
 uploadAlphaNums a = do
   inputs . alphaNumPressed .= Just a
 
+-- TODO: pass via Strict Storable struct
 addRect :: ScreenPositionTotal -> ScreenPositionTotal -> (Float, Float, Float) -> (Float, Float) -> (Float, Float) -> HamGui ()
 addRect (x0, y0) (sx, sy) (r, g, b) (u0, v0) (u1, v1) = do
-  addVertex (x0   ) (y0   ) (u0) (v1)
-  addVertex (x0+sx) (y0   ) (u1) (v1)
-  addVertex (x0+sx) (y0+sy) (u1) (v0)
-  addVertex (x0   ) (y0+sy) (u0) (v0)
-  addElem (0) (1) (2)
-  addElem (0) (2) (3)
+  v <- use vertId
+  addVertex (cx0   )  (cy0   )  (cu0) (cv1)
+  addVertex (cx0+csx) (cy0   )  (cu1) (cv1)
+  addVertex (cx0+csx) (cy0+csy) (cu1) (cv0)
+  addVertex (cx0   )  (cy0+csy) (cu0) (cv0)
+  addElem (v+0) (v+1) (v+2)
+  addElem (v+0) (v+2) (v+3)
   vertId += 4
   pure ()
- where addColor = do
-         vertexDataL <>= [(CFloat r), (CFloat g), (CFloat b)]
-       addVertex x y ux uy = do
-         vertexDataL <>= [(CFloat x), (CFloat y)]
-         addColor
-         vertexDataL <>= [(CFloat ux)]
-         vertexDataL <>= [(CFloat uy)]
+ where addVertex x y ux uy = do
+         v <- use vertexDataL
+         vId <- use vI
+         newid <- liftIO $ [C.block|int {
+           int vid = $(int vId);
+           float *v = $vec-ptr:(float *v);
+           v[vid++] = $(float x);  v[vid++] = $(float y);
+           v[vid++] = $(float cr); v[vid++] = $(float cg); v[vid++] = $(float cb);
+           v[vid++] = $(float ux); v[vid++] = $(float uy);
+           return vid;
+         }|]
+         vI .= newid
        addElem i0 i1 i2 = do
-         vertId <- use vertId
-         elemDataL <>= [(i0 + vertId), (i1 + vertId), (i2 + vertId)]
+         e <- use elemDataL
+         eId <- use eI
+         newid <- liftIO $ [C.block|int {
+           int *e = $vec-ptr:(int *e);
+           int eid = $(int eId);
+           e[eid++] = $(int i0); e[eid++] = $(int i1); e[eid++] = $(int i2);
+           return eid;
+         }|]
+         eI .= newid
+       (cx0, cy0) = (CFloat x0, CFloat y0);(csx, csy) = (CFloat sx, CFloat sy); (cr, cg, cb) = (CFloat r, CFloat g, CFloat b); (cu0, cv0) = (CFloat u0, CFloat v0); (cu1, cv1) = (CFloat u1, CFloat v1)
 
 addGlyph :: Char -> ScreenPositionTotal -> (Float, Float) -> HamGui ()
 addGlyph ch (x, y) (w, h) = do
@@ -89,24 +106,22 @@ addRectWithBorder p@(x0, y0) s@(sx, sy) c@(_r, _g, _b) cb@(_rb, _gb, _bb) = do
   addRect p s cb skipUV skipUV
   addRect (x0+0.01, y0+0.01) (sx-0.02, sy-0.02) c skipUV skipUV
 
-initHamGuiData :: HamGuiData
-initHamGuiData = HamGuiData [] [] 0 (-900, 0) M.empty (Input Nothing Nothing Nothing) (0, 0) emptyFont Nothing
+initHamGuiData :: MV.IOVector CFloat -> MV.IOVector CInt -> HamGuiData
+initHamGuiData vMV eMV = HamGuiData vMV eMV 0 0 0 (-900, 0) M.empty (Input Nothing Nothing Nothing) (0, 0) emptyFont Nothing
 
 clearBuffers :: HamGui ()
 clearBuffers = do
-  vertexDataL    .= []
-  elemDataL      .= []
+  vI .= 0
+  eI .= 0
   vertId         .= 0
   cursorPosition .= (512, 512)
 
 composeBuffers :: (Ptr CFloat -> IO ()) -> (Ptr CInt -> IO ()) -> HamGui ()
 composeBuffers actionA actionE = do
-  ds <- use vertexDataL
-  es <- use elemDataL
-  let dv = unfoldrN (S.length ds) uncons ds
-  let ev = unfoldrN (S.length es) uncons es
-  liftIO $ unsafeWith dv actionA
-  liftIO $ unsafeWith ev actionE
+  dv <- use vertexDataL
+  ev <- use elemDataL
+  liftIO $ MV.unsafeWith dv actionA
+  liftIO $ MV.unsafeWith ev actionE
   pure ()
 
 processInputs :: HamGui ()
@@ -172,10 +187,10 @@ getPrimaryColor isHeld isFocused = pure $
    else if isFocused then (0.0, 0.0, 0.5)
                      else (1.0, 0.0, 0.0))
 
-getSecondaryColor isHeld isFocused = pure (0.5, 1.0, 0.0)
+getSecondaryColor _isHeld _isFocused = pure (0.5, 1.0, 0.0)
 
 fitTextLabel :: ScreenPositionProjected -> ScreenPositionProjected -> HamGui (ScreenPositionTotal)
-fitTextLabel rect rectsize = toSPT ((fromIntegral $ fst rect) + 10, (fromIntegral $ snd rect) + 10)
+fitTextLabel rect _rectsize = toSPT ((fromIntegral $ fst rect) + 10, (fromIntegral $ snd rect) + 10)
 
 button :: ObjectId -> String -> HamGui Bool
 button oId label = do

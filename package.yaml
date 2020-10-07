@@ -14,6 +14,8 @@ description:         Haskell IMGUI library
 dependencies:
 - base >= 4.7 && < 5
 - containers
+- criterion
+- inline-c
 - vector
 - parsec
 - lens
@@ -22,6 +24,7 @@ dependencies:
 
 default-extensions:
 - TemplateHaskell
+- QuasiQuotes
 - FlexibleContexts
 - OverloadedLists
 
