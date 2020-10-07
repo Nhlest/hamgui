@@ -44,6 +44,18 @@ uploadAlphaNums a = do
 addRect :: ScreenPositionTotal -> ScreenPositionTotal -> (Float, Float, Float) -> (Float, Float) -> (Float, Float) -> HamGui ()
 addRect (x0, y0) (sx, sy) (r, g, b) (u0, v0) (u1, v1) = do
   v <- use vertId
+  vv <- use vertexDataL
+  vi <- use vI
+  ev <- use elemDataL
+  ei <- use eI
+  let vs = MV.length vv
+  let es = MV.length ev
+  when (vs < fromIntegral vi + 50) $ do
+                                     newv <- liftIO $ MV.grow vv 1000
+                                     vertexDataL .= newv
+  when (es < fromIntegral ei + 50) $ do
+                                     newe <- liftIO $ MV.grow ev 1000
+                                     elemDataL .= newe
   addVertex (cx0   )  (cy0   )  (cu0) (cv1)
   addVertex (cx0+csx) (cy0   )  (cu1) (cv1)
   addVertex (cx0+csx) (cy0+csy) (cu1) (cv0)
