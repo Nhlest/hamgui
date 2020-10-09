@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 module Graphics.UI.HamGui.Types where
 
 import qualified Data.Vector.Storable.Mutable as MV
@@ -8,8 +9,14 @@ import Control.Lens
 
 import Graphics.UI.HamGui.BitMapFont
 
-type ScreenPositionTotal = (Float, Float)
-type ScreenPositionProjected = (Int, Int)
+data ScreenPositionTotal = SPT !Float !Float
+  deriving Show
+data ScreenPositionProjected = SPP !Int !Int
+  deriving Show
+data UVCoordinate = UVC !Float !Float
+  deriving Show
+data RGBColor = RGBC !Float !Float !Float
+  deriving Show
 
 newtype ObjectId = ObjectId String deriving (Eq, Ord, Show)
 
@@ -36,7 +43,7 @@ data Input = Input {
   }
 $(makeLenses ''Input)
 
-data HamGuiData = HamGuiData {
+data HamGuiData u = HamGuiData {
     _vertexDataL :: MV.IOVector CFloat,
     _elemDataL :: MV.IOVector CInt,
     _vI :: CInt,
@@ -45,10 +52,12 @@ data HamGuiData = HamGuiData {
     _screenSize :: ScreenPositionProjected,
     _objectData :: M.Map ObjectId Object,
     _inputs :: Input,
-    _cursorPosition :: (Int, Int),
+    _cursorPosition :: ScreenPositionProjected,
     _bitMapFont :: BitMapFont,
-    _focusedObject :: Maybe ObjectId
+    _focusedObject :: Maybe ObjectId,
+    _userData :: u
   }
 $(makeLenses ''HamGuiData)
 
-type HamGui a = StateT HamGuiData IO a
+type HamGuiU u a = StateT (HamGuiData u) IO a
+type HamGui a = forall u. HamGuiU u a

@@ -19,7 +19,7 @@ data Character = Character {
     _charDwidth :: (Int, Int),
     _charBbx :: (Int, Int, Int, Int),
     _charBitmap :: [Int]
-  } deriving Show -- TODO: Move to Types maybe? (Or BMF.Types (!))
+  } deriving (Show, Eq) -- TODO: Move to Types maybe? (Or BMF.Types (!))
 
 bdfParser :: GenParser Char st [Character]
 bdfParser = do
@@ -61,6 +61,37 @@ bdfParser = do
        numberEndingWith a = read <$> (manyTill (digit) $ try a)
        numberMinusEndingWith a = read <$> (manyTill (digitOrMinus) $ try a)
 
+fillTillSide storySoFar squareSide currentRowHeight =
+  let (before, current) = splitAt ((length storySoFar) - currentRowHeight) storySoFar in
+    before ++ [r++(replicate (squareSide - (length r)) 0)|r <- current]
+
+-- TODO: refactor
+tryToFit :: Int -> [Character] -> Maybe ([[Word8]], M.Map Char CharacterDefinition)
+tryToFit squareSide_p chars_p@((Character _ _ _ (_, bh, _, _) _):_) =
+  go (M.empty) squareSide_p chars_p (replicate bh []) 0 bh
+  where go characterMap squareSide [] storySoFar _ currentRowHeight = Just $ (fillTillSide storySoFar squareSide currentRowHeight, characterMap)
+        go characterMap squareSide chars@((Character ch (_sx, _sy) (dx, dy) (bw, bh, bx, by) bm):xs) storySoFar currentWidthCursor currentRowHeight =
+          if length storySoFar > squareSide then tryToFit (squareSide_p * 2) chars_p else
+          if currentWidthCursor+bw >= squareSide then go characterMap squareSide chars ((fillTillSide storySoFar squareSide currentRowHeight) ++ (replicate bh [])) 0 bh else
+          let (before, current) = splitAt ((length storySoFar) - currentRowHeight) storySoFar in
+            go (M.insert (toEnum ch)
+            (let ss = fromIntegral squareSide
+                 cx = fromIntegral currentWidthCursor
+                 cy = fromIntegral $ length before+1
+                 sx = fromIntegral bw
+                 sy = fromIntegral bh
+                 sq = fromIntegral squareSide
+             in CharDef (cx/ss) (cy/ss) (sx/ss) (sy/ss)
+                        (fromIntegral bx/sq) (fromIntegral by/sq)
+                        (fromIntegral dx/sq) (fromIntegral dy/sq)) characterMap)
+             squareSide xs (before ++ [let row = current !! ix in row ++ [get bm c ix currentRowHeight bw | c <- [0..bw-1]] | ix <- [0..length current-1]]) (currentWidthCursor+bw) currentRowHeight
+        get bm x y h w = if y < (h-char_height) then skip else
+          if testBit (bm !! (y-(h-char_height))) (w-x-1) then fill else empty
+          where char_height = length bm
+                empty = 0::Word8
+                skip = 128::Word8
+                fill  = 255::Word8
+
 loadBDF :: FilePath -> IO (BitMapFont)
 loadBDF path = do
   bdfImage <- Text.unpack <$> Text.readFile path
@@ -79,29 +110,3 @@ loadBDF path = do
       _rgbaData = V.fromList $ concatenate,
       _debug = ""
     }
- where tryToFit squareSide_p chars_p@((Character _ch (_sx, _sy) (_dx, _dy) (_bw, bh, _bx, _by) _bm):_xs) = go (M.empty) squareSide_p chars_p (replicate bh []) 0 bh
-         where go characterMap squareSide [] storySoFar currentWidthCursor currentRowHeight = Just $ (fillTillSide storySoFar squareSide currentRowHeight currentWidthCursor, characterMap)
-               go characterMap squareSide chars@((Character ch (_sx, _sy) (dx, dy) (bw, bh, bx, by) bm):xs) storySoFar currentWidthCursor currentRowHeight =
-                 if length storySoFar > squareSide then tryToFit (squareSide_p * 2) chars_p else
-                 if currentWidthCursor+bw >= squareSide then go characterMap squareSide chars ((fillTillSide storySoFar squareSide currentRowHeight currentWidthCursor) ++ (replicate bh [])) 0 bh else
-                 let (before, current) = splitAt ((length storySoFar) - currentRowHeight) storySoFar in
-                   go (M.insert (toEnum ch)
-                   (let ss = fromIntegral squareSide
-                        cx = fromIntegral currentWidthCursor
-                        cy = fromIntegral $ length before+1
-                        sx = fromIntegral bw
-                        sy = fromIntegral bh
-                        sq = fromIntegral squareSide
-                    in CharDef (cx/ss) (cy/ss) (sx/ss) (sy/ss)
-                               (fromIntegral bx/sq) (fromIntegral by/sq)
-                               (fromIntegral dx/sq) (fromIntegral dy/sq)) characterMap)
-                    squareSide xs (before ++ [let row = current !! ix in row ++ [get bm c ix currentRowHeight bw | c <- [0..bw-1]] | ix <- [0..length current-1]]) (currentWidthCursor+bw) currentRowHeight
-               fillTillSide storySoFar squareSide currentRowHeight _currentCursorPos =
-                 let (before, current) = splitAt ((length storySoFar) - currentRowHeight) storySoFar in
-                   before ++ [r++(replicate (squareSide - (length r)) 0)|r <- current]
-               get bm x y h w = if y < (h-char_height) then skip else
-                 if testBit (bm !! (y-(h-char_height))) (w-x-1) then fill else empty
-                 where char_height = length bm
-                       empty = 0::Word8
-                       skip = 128::Word8
-                       fill  = 255::Word8

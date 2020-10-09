@@ -2,11 +2,11 @@
 module Graphics.UI.HamGui.HamGui where
 
 import qualified Data.Vector.Storable.Mutable as MV
+import qualified Language.C.Inline            as C
+import qualified Data.Map                     as M
 import Control.Monad.State.Strict
-import qualified Data.Map as M
 import Foreign.C.Types
 import Control.Lens
-import qualified Language.C.Inline as C
 import Foreign.Ptr
 import Data.Maybe
 
@@ -16,17 +16,17 @@ import Graphics.UI.HamGui.Types
 C.context (C.baseCtx <> C.vecCtx)
 
 toSPT :: ScreenPositionProjected -> HamGui ScreenPositionTotal
-toSPT (x, y) = do
-  (sx, sy) <- use screenSize
-  pure (fromIntegral x / fromIntegral sx * 2.0 - 1.0, fromIntegral y / fromIntegral sy * 2.0 - 1.0)
+toSPT (SPP x y) = do
+  (SPP sx sy) <- use screenSize
+  pure $ SPT (fromIntegral x / fromIntegral sx * 2.0 - 1.0) (fromIntegral y / fromIntegral sy * 2.0 - 1.0)
 
 toSPTU :: ScreenPositionProjected -> HamGui ScreenPositionTotal
-toSPTU (x, y) = do
-  (sx, sy) <- use screenSize
-  pure (fromIntegral x / fromIntegral sx * 2.0, fromIntegral y / fromIntegral sy * 2.0)
+toSPTU (SPP x y) = do
+  (SPP sx sy) <- use screenSize
+  pure $ SPT (fromIntegral x / fromIntegral sx * 2.0) (fromIntegral y / fromIntegral sy * 2.0)
 
-skipUV :: (Float, Float)
-skipUV = (-1.0, -1.0)
+skipUV :: UVCoordinate
+skipUV = UVC (-1.0) (-1.0)
 
 setScreenSize :: ScreenPositionProjected -> HamGui ()
 setScreenSize = assign screenSize
@@ -40,9 +40,28 @@ uploadAlphaNums :: String -> HamGui ()
 uploadAlphaNums a = do
   inputs . alphaNumPressed .= Just a
 
+initHamGuiData :: u -> MV.IOVector CFloat -> MV.IOVector CInt -> HamGuiData u
+initHamGuiData userData vMV eMV = HamGuiData vMV eMV 0 0 0 (SPP (-900) 0) M.empty (Input Nothing Nothing Nothing) (SPP 0 0) emptyFont Nothing userData
+
+clearBuffers :: HamGui ()
+clearBuffers = do
+  vI .= 0
+  eI .= 0
+  vertId         .= 0
+  cursorPosition .= (SPP 0 900)
+
+processInputs :: HamGui ()
+processInputs = do
+  pure ()
+
+newFrame :: HamGui ()
+newFrame = do
+  clearBuffers
+  processInputs
+
 -- TODO: pass via Strict Storable struct
-addRect :: ScreenPositionTotal -> ScreenPositionTotal -> (Float, Float, Float) -> (Float, Float) -> (Float, Float) -> HamGui ()
-addRect (x0, y0) (sx, sy) (r, g, b) (u0, v0) (u1, v1) = do
+addRect :: ScreenPositionTotal -> ScreenPositionTotal -> RGBColor -> UVCoordinate -> UVCoordinate -> HamGui ()
+addRect (SPT x0 y0) (SPT sx sy) (RGBC r g b) (UVC u0 v0) (UVC u1 v1) = do
   v <- use vertId
   vv <- use vertexDataL
   vi <- use vI
@@ -88,18 +107,18 @@ addRect (x0, y0) (sx, sy) (r, g, b) (u0, v0) (u1, v1) = do
          eI .= newid
        (cx0, cy0) = (CFloat x0, CFloat y0);(csx, csy) = (CFloat sx, CFloat sy); (cr, cg, cb) = (CFloat r, CFloat g, CFloat b); (cu0, cv0) = (CFloat u0, CFloat v0); (cu1, cv1) = (CFloat u1, CFloat v1)
 
-addGlyph :: Char -> ScreenPositionTotal -> (Float, Float) -> HamGui ()
-addGlyph ch (x, y) (w, h) = do
+addGlyph :: Char -> ScreenPositionTotal -> ScreenPositionTotal -> HamGui ()
+addGlyph ch (SPT x y) (SPT w h) = do
   bmf <- use bitMapFont
   let f = bmf ^. charSet
   let char = M.lookup ch f
   case char of
     Nothing -> liftIO $ fail "pepega character not found"
     Just (CharDef cx cy sx sy _ox _oy _ax _ay) -> do
-      addRect (x, y) (w, h) (1.0, 0.0, 0.0) (cx, cy) ((cx+sx), (cy+sy))
+      addRect (SPT x y) (SPT w h) (RGBC 1.0 0.0 0.0) (UVC cx cy) (UVC (cx+sx) (cy+sy))
 
-addText :: String -> ScreenPositionTotal -> (Float, Float) -> HamGui ()
-addText str (x, y) (w, h) = do
+addText :: String -> ScreenPositionTotal -> ScreenPositionTotal -> HamGui ()
+addText str (SPT x y) (SPT w h) = do
   bmf <- use bitMapFont
   go bmf str (x, y) (w, h)
  where go _ [] _ _ = pure ()
@@ -109,24 +128,14 @@ addText str (x, y) (w, h) = do
          case char of
            Nothing -> liftIO $ fail "pepega character not found"
            Just (CharDef _cx _cy sx sy ox oy ax ay) -> do
-             addGlyph ch (x+ox*w, y+oy*h) (sx*w, sy*h)
+             addGlyph ch (SPT (x+ox*w) (y+oy*h)) (SPT (sx*w) (sy*h))
              go bmf rest (x+ax*w, y+ay*h) (w, h)
          pure ()
 
-addRectWithBorder :: ScreenPositionTotal -> ScreenPositionTotal -> (Float, Float, Float) -> (Float, Float, Float) -> HamGui ()
-addRectWithBorder p@(x0, y0) s@(sx, sy) c@(_r, _g, _b) cb@(_rb, _gb, _bb) = do
+addRectWithBorder :: ScreenPositionTotal -> ScreenPositionTotal -> RGBColor -> RGBColor -> HamGui ()
+addRectWithBorder p@(SPT x0 y0) s@(SPT sx sy) c@(RGBC _r _g _b) cb@(RGBC _rb _gb _bb) = do
   addRect p s cb skipUV skipUV
-  addRect (x0+0.01, y0+0.01) (sx-0.02, sy-0.02) c skipUV skipUV
-
-initHamGuiData :: MV.IOVector CFloat -> MV.IOVector CInt -> HamGuiData
-initHamGuiData vMV eMV = HamGuiData vMV eMV 0 0 0 (-900, 0) M.empty (Input Nothing Nothing Nothing) (0, 0) emptyFont Nothing
-
-clearBuffers :: HamGui ()
-clearBuffers = do
-  vI .= 0
-  eI .= 0
-  vertId         .= 0
-  cursorPosition .= (512, 512)
+  addRect (SPT (x0+0.01) (y0+0.01)) (SPT (sx-0.02) (sy-0.02)) c skipUV skipUV
 
 composeBuffers :: (Ptr CFloat -> IO ()) -> (Ptr CInt -> IO ()) -> HamGui ()
 composeBuffers actionA actionE = do
@@ -136,19 +145,10 @@ composeBuffers actionA actionE = do
   liftIO $ MV.unsafeWith ev actionE
   pure ()
 
-processInputs :: HamGui ()
-processInputs = do
-  pure ()
-
-newFrame :: HamGui ()
-newFrame = do
-  clearBuffers
-  processInputs
-
 -- Actual widgetds
 
 checkIfPointIsInsideBox :: ScreenPositionProjected -> (ScreenPositionProjected, ScreenPositionProjected) -> Bool
-checkIfPointIsInsideBox (x, y) ((bx, by), (sx, sy)) = do
+checkIfPointIsInsideBox (SPP x y) ((SPP bx by), (SPP sx sy)) = do
   x >= bx && x <= bx + sx && y >= by && y <= by + sy
 
 genericObjectInputCheck :: ObjectId -> HamGui Bool
@@ -176,12 +176,12 @@ genericObjectInputCheck oId = do
   pure justClickedStatus
 
 fitBoxOfSize :: ScreenPositionProjected -> HamGui (ScreenPositionProjected, ScreenPositionProjected, ScreenPositionTotal, ScreenPositionTotal)
-fitBoxOfSize (w, h) = do
-  cursorP        <- use cursorPosition
-  cursor         <- toSPT cursorP
-  boxSizeT       <- toSPTU (w, h)
-  cursorPosition .= (fst cursorP, snd cursorP - h - 10)
-  pure (cursorP, (w, h), cursor, boxSizeT)
+fitBoxOfSize box@(SPP w h) = do
+  cursorP@(SPP cx cy) <- use cursorPosition
+  cursor              <- toSPT cursorP
+  boxSizeT            <- toSPTU (SPP w h)
+  cursorPosition .= (SPP cx $ cy - h - 10)
+  pure (cursorP, box, cursor, boxSizeT)
 
 isObjFocused :: ObjectId -> HamGui Bool
 isObjFocused oId = fromMaybe False <$> ((fmap . fmap) ((==) oId) $ use focusedObject)
@@ -195,19 +195,19 @@ updateObjData :: ObjectId -> (ScreenPositionProjected, ScreenPositionProjected) 
 updateObjData oId box st = objectData %= M.insertWith (\(Object a _ _) (Object _ b _) -> Object a b st) oId (Object box Inert st)
 
 getPrimaryColor isHeld isFocused = pure $
-  (if isHeld         then (0.0, 0.0, 1.0)
-   else if isFocused then (0.0, 0.0, 0.5)
-                     else (1.0, 0.0, 0.0))
+  (if isHeld         then (RGBC 0.0 0.0 1.0)
+   else if isFocused then (RGBC 0.0 0.0 0.5)
+                     else (RGBC 1.0 0.0 0.0))
 
-getSecondaryColor _isHeld _isFocused = pure (0.5, 1.0, 0.0)
+getSecondaryColor _isHeld _isFocused = pure (RGBC 0.5 1.0 0.0)
 
 fitTextLabel :: ScreenPositionProjected -> ScreenPositionProjected -> HamGui (ScreenPositionTotal)
-fitTextLabel rect _rectsize = toSPT ((fromIntegral $ fst rect) + 10, (fromIntegral $ snd rect) + 10)
+fitTextLabel (SPP rx ry) _rectsize = toSPT (SPP ((fromIntegral rx) + 10) $ (fromIntegral ry) + 10)
 
 button :: ObjectId -> String -> HamGui Bool
 button oId label = do
   clicked                            <- genericObjectInputCheck oId
-  (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (200, 50)
+  (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (SPP 250 50)
   isFocused                          <- isObjFocused oId
   isHeld                             <- isObjHeld oId
   primaryColor                       <- getPrimaryColor isHeld isFocused
@@ -215,13 +215,13 @@ button oId label = do
   textPos                            <- fitTextLabel rect rectsize
   updateObjData     oId (rect, rectsize) SButton
   addRectWithBorder rectT rectsizeT primaryColor secondaryColor
-  addText label textPos (2, 2)
+  addText label textPos (SPT 2 2) -- TODO: This is not SPT
   pure clicked
 
 textInput :: ObjectId -> HamGui String
 textInput oId = do
   _                                  <- genericObjectInputCheck oId
-  (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (200, 50)
+  (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (SPP 200 50)
   isFocused                          <- isObjFocused oId
   isHeld                             <- isObjHeld oId
   primaryColor                       <- getPrimaryColor isHeld isFocused
@@ -234,5 +234,5 @@ textInput oId = do
   void $         if isFocused then inputs . alphaNumPressed .= Nothing else pure ()
   updateObjData     oId (rect, rectsize) $ STextInput newLabel
   addRectWithBorder rectT rectsizeT primaryColor secondaryColor
-  addText newLabel textPos (2, 2)
+  addText newLabel textPos (SPT 2 2)
   pure newLabel

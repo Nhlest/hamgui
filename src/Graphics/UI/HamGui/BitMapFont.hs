@@ -15,7 +15,7 @@ data CharacterDefinition = CharDef {
     _charPenOffsetY :: Float,
     _charPenAdvanceX :: Float,
     _charPenAdvanceY :: Float
-  } deriving Show
+  } deriving (Show, Eq)
 $(makeLenses ''CharacterDefinition)
 
 data BitMapFont = BitMapFont {
