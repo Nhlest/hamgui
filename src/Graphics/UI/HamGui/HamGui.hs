@@ -48,6 +48,7 @@ clearBuffers = do
   vI .= 0
   eI .= 0
   vertId         .= 0
+  -- TODO: make window position start from top left corner
   cursorPosition .= (SPP 0 900)
 
 processInputs :: HamGui ()
@@ -217,6 +218,23 @@ button oId label = do
   addRectWithBorder rectT rectsizeT primaryColor secondaryColor
   addText label textPos (SPT 2 2) -- TODO: This is not SPT
   pure clicked
+
+checkbox :: ObjectId -> HamGui Bool
+checkbox oId = do
+  clicked                            <- genericObjectInputCheck oId
+  (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (SPP 50 50)
+  isFocused                          <- isObjFocused oId
+  isHeld                             <- isObjHeld oId
+  primaryColor                       <- getPrimaryColor isHeld isFocused
+  secondaryColor                     <- getSecondaryColor isHeld isFocused
+  textPos                            <- fitTextLabel rect rectsize
+  object                             <- M.lookup oId <$> use objectData
+  let state                          = fromMaybe False $ object ^? _Just . privateState . _SCheckBox
+  let newstate = if clicked then not state else state
+  updateObjData     oId (rect, rectsize) (SCheckBox newstate)
+  addRectWithBorder rectT rectsizeT primaryColor secondaryColor
+  when state $ addText "X" textPos (SPT 2 2) -- TODO: This is not SPT
+  pure newstate
 
 textInput :: ObjectId -> HamGui String
 textInput oId = do
