@@ -254,3 +254,14 @@ textInput oId = do
   addRectWithBorder rectT rectsizeT primaryColor secondaryColor
   addText newLabel textPos (SPT 2 2)
   pure newLabel
+
+textLabel :: ObjectId -> String -> HamGui ()
+textLabel oId label = do
+  _                                  <- genericObjectInputCheck oId
+  (rect, rectsize, _, _)             <- fitBoxOfSize (SPP 200 50)
+  isFocused                          <- isObjFocused oId
+  textPos                            <- fitTextLabel rect rectsize
+  void $         if isFocused then inputs . alphaNumPressed .= Nothing else pure ()
+  updateObjData     oId (rect, rectsize) $ STextLabel
+  addText label textPos (SPT 2 2)
+  pure ()

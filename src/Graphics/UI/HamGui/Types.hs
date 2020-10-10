@@ -25,6 +25,7 @@ $(makePrisms ''UIState)
 
 data ObjectState =
     SButton
+  | STextLabel
   | STextInput String
   | SCheckBox Bool
   deriving Show
