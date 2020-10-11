@@ -265,3 +265,19 @@ textLabel oId label = do
   updateObjData     oId (rect, rectsize) $ STextLabel
   addText label textPos (SPT 2 2)
   pure ()
+
+slider :: Slidable a => ObjectId -> a -> HamGui Bool
+slider oId value = do
+  clicked                            <- genericObjectInputCheck oId
+  (rect, rectsize, rectT@(SPT cornerx cornery), rectsizeT@(SPT sizex sizey)) <- fitBoxOfSize (SPP 250 10)
+  isFocused                          <- isObjFocused oId
+  isHeld                             <- isObjHeld oId
+  primaryColor                       <- getPrimaryColor isHeld isFocused
+  secondaryColor                     <- getSecondaryColor isHeld isFocused
+  -- textPos                            <- fitTextLabel rect rectsize
+  updateObjData     oId (rect, rectsize) (SSlider value)
+  addRect rectT rectsizeT secondaryColor skipUV skipUV
+  addRect (SPT (cornerx + (sizex/2)) cornery) (SPT 0.1 0.1) primaryColor skipUV skipUV
+  -- addRectWithBorder rectT rectsizeT primaryColor secondaryColor
+  -- addText label textPos (SPT 2 2) -- TODO: This is not SPT
+  pure clicked

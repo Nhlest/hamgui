@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, FlexibleInstances, GADTs #-}
 module Graphics.UI.HamGui.Types where
 
 import qualified Data.Vector.Storable.Mutable as MV
@@ -23,19 +23,26 @@ newtype ObjectId = ObjectId String deriving (Eq, Ord, Show)
 data UIState = Inert | MouseHover ScreenPositionProjected | MouseHeld ScreenPositionProjected deriving Show
 $(makePrisms ''UIState)
 
-data ObjectState =
-    SButton
-  | STextLabel
-  | STextInput String
-  | SCheckBox Bool
-  deriving Show
+class Slidable a where
+  slideBetween :: Float -> Float -> Float -> a -> a -> a
+
+instance Slidable Float where
+  slideBetween lower_bound higher_bound cursor min max = (realToFrac (((cursor - lower_bound)/(higher_bound-lower_bound))) * (max-min)) + min
+
+data ObjectState where
+  SButton :: ObjectState
+  STextLabel :: ObjectState
+  STextInput :: String -> ObjectState
+  SCheckBox :: Bool -> ObjectState
+  SSlider :: Slidable s => s -> ObjectState
+    -- deriving Show
 $(makePrisms ''ObjectState)
 
 data Object = Object {
     _boxBox :: (ScreenPositionProjected, ScreenPositionProjected),
     _objectState :: UIState,
     _privateState :: ObjectState
-  } deriving Show
+  }
 $(makeLenses ''Object)
 
 data Input = Input {
