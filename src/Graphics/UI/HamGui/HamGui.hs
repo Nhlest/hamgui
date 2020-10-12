@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, TypeFamilies #-}
+{-# LANGUAGE RankNTypes, TypeFamilies, ScopedTypeVariables #-}
 module Graphics.UI.HamGui.HamGui where
 
 import qualified Data.Vector.Storable.Mutable as MV
@@ -40,8 +40,8 @@ uploadAlphaNums :: String -> HamGui ()
 uploadAlphaNums a = do
   inputs . alphaNumPressed .= Just a
 
-initHamGuiData :: u -> MV.IOVector CFloat -> MV.IOVector CInt -> HamGuiData u
-initHamGuiData userData vMV eMV = HamGuiData vMV eMV 0 0 0 (SPP (-900) 0) M.empty (Input Nothing Nothing Nothing) (SPP 0 0) emptyFont Nothing userData
+initHamGuiData :: MV.IOVector CFloat -> MV.IOVector CInt -> HamGuiData
+initHamGuiData vMV eMV = HamGuiData vMV eMV 0 0 0 (SPP (-900) 0) M.empty (Input Nothing Nothing Nothing) (SPP 0 0) emptyFont Nothing
 
 clearBuffers :: HamGui ()
 clearBuffers = do
@@ -152,9 +152,9 @@ checkIfPointIsInsideBox :: ScreenPositionProjected -> (ScreenPositionProjected, 
 checkIfPointIsInsideBox (SPP x y) ((SPP bx by), (SPP sx sy)) = do
   x >= bx && x <= bx + sx && y >= by && y <= by + sy
 
-genericObjectInputCheck :: ObjectId -> HamGui Bool
+genericObjectInputCheck :: ObjectId -> HamGui (Bool, Bool, ScreenPositionProjected)
 genericObjectInputCheck oId = do
-  dataFromLastFrame <- M.lookup oId <$> use objectData
+  dataFromLastFrame <- use $ objectData . at oId
   mouse             <- use $ inputs . mousePos
   mouseM            <- fromJust <$> (use $ inputs . mousePos)
   lmb               <- fromMaybe False <$> preview (_Just . _1) <$> (use $ inputs . mouseKeyState)
@@ -174,7 +174,7 @@ genericObjectInputCheck oId = do
     else if hoverStatus                             then MouseHover mouseM
     else                                                 Inert
   when justClickedStatus $ focusedObject .= Just oId
-  pure justClickedStatus
+  pure (justClickedStatus, clickedStatus, mouseM)
 
 fitBoxOfSize :: ScreenPositionProjected -> HamGui (ScreenPositionProjected, ScreenPositionProjected, ScreenPositionTotal, ScreenPositionTotal)
 fitBoxOfSize box@(SPP w h) = do
@@ -207,7 +207,7 @@ fitTextLabel (SPP rx ry) _rectsize = toSPT (SPP ((fromIntegral rx) + 10) $ (from
 
 button :: ObjectId -> String -> HamGui Bool
 button oId label = do
-  clicked                            <- genericObjectInputCheck oId
+  clicked                            <- genericObjectInputCheck oId <&> view _1
   (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (SPP 250 50)
   isFocused                          <- isObjFocused oId
   isHeld                             <- isObjHeld oId
@@ -221,7 +221,7 @@ button oId label = do
 
 checkbox :: ObjectId -> HamGui Bool
 checkbox oId = do
-  clicked                            <- genericObjectInputCheck oId
+  clicked                            <- genericObjectInputCheck oId <&> view _1
   (rect, rectsize, rectT, rectsizeT) <- fitBoxOfSize (SPP 50 50)
   isFocused                          <- isObjFocused oId
   isHeld                             <- isObjHeld oId
@@ -266,18 +266,40 @@ textLabel oId label = do
   addText label textPos (SPT 2 2)
   pure ()
 
-slider :: Slidable a => ObjectId -> a -> HamGui Bool
-slider oId value = do
-  clicked                            <- genericObjectInputCheck oId
-  (rect, rectsize, rectT@(SPT cornerx cornery), rectsizeT@(SPT sizex sizey)) <- fitBoxOfSize (SPP 250 10)
+slider :: Slidable a => ObjectId -> a -> a -> a -> HamGui Bool
+slider oId value val_min val_max = do
+  (_, clicked, clickedPos)              <- genericObjectInputCheck oId
+  (rect@(SPP px py), rectsize@(SPP sx sy), rectT@(SPT cornerx cornery), rectsizeT@(SPT sizex sizey)) <- fitBoxOfSize (SPP 250 20)
+  mPos@(SPP mx my)                   <- fromMaybe (SPP 0 0) <$> use (inputs . mousePos)
   isFocused                          <- isObjFocused oId
   isHeld                             <- isObjHeld oId
   primaryColor                       <- getPrimaryColor isHeld isFocused
   secondaryColor                     <- getSecondaryColor isHeld isFocused
-  -- textPos                            <- fitTextLabel rect rectsize
-  updateObjData     oId (rect, rectsize) (SSlider value)
+  objects                            <- use objectData
+  let object = objects ^. at oId ^? _Just . privateState
+  p <- case clicked of
+        True -> do
+          let new_val = slideBetween px (px + sx) mx val_min val_max
+          let percentage = fractionBetween val_min val_max new_val
+          updateObjData oId (rect, rectsize) $ SSlider new_val percentage
+          pure $ floor $ percentage * (fromIntegral sx) + (fromIntegral px)
+        False -> do
+          case object of
+            Just v -> do
+              updateObjData oId (rect, rectsize) $ v
+              let percentage = case v of
+                    SSlider _ p -> p
+                    _ -> 0.0
+              pure $ floor $ percentage * (fromIntegral sx) + (fromIntegral px)
+            Nothing -> do
+              let percentage = fractionBetween val_min val_max value
+              updateObjData oId (rect, rectsize) $ SSlider value percentage
+              pure $ floor $ percentage * (fromIntegral sx) + (fromIntegral px)
+              
+  pure ()
+      
   addRect rectT rectsizeT secondaryColor skipUV skipUV
-  addRect (SPT (cornerx + (sizex/2)) cornery) (SPT 0.1 0.1) primaryColor skipUV skipUV
-  -- addRectWithBorder rectT rectsizeT primaryColor secondaryColor
+  re <- toSPT (SPP (p-10) py)
+  addRect re (SPT 0.1 sizey) primaryColor skipUV skipUV
   -- addText label textPos (SPT 2 2) -- TODO: This is not SPT
-  pure clicked
+  pure True

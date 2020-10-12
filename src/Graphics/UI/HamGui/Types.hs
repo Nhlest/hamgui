@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, FlexibleInstances, GADTs #-}
+{-# LANGUAGE RankNTypes, FlexibleInstances, GADTs, KindSignatures #-}
 module Graphics.UI.HamGui.Types where
 
 import qualified Data.Vector.Storable.Mutable as MV
@@ -11,8 +11,10 @@ import Graphics.UI.HamGui.BitMapFont
 
 data ScreenPositionTotal = SPT !Float !Float
   deriving Show
+$(makePrisms 'SPT)
 data ScreenPositionProjected = SPP !Int !Int
   deriving Show
+$(makePrisms 'SPP)
 data UVCoordinate = UVC !Float !Float
   deriving Show
 data RGBColor = RGBC !Float !Float !Float
@@ -24,17 +26,24 @@ data UIState = Inert | MouseHover ScreenPositionProjected | MouseHeld ScreenPosi
 $(makePrisms ''UIState)
 
 class Slidable a where
-  slideBetween :: Float -> Float -> Float -> a -> a -> a
+  slideBetween :: Int -> Int -> Int -> a -> a -> a
+  fractionBetween :: a -> a -> a -> Float
 
 instance Slidable Float where
-  slideBetween lower_bound higher_bound cursor min max = (realToFrac (((cursor - lower_bound)/(higher_bound-lower_bound))) * (max-min)) + min
+  slideBetween lower_bound higher_bound cursor min max = ratioa + min
+    where size = higher_bound - lower_bound
+          sizea = max - min
+          v = cursor - lower_bound
+          ratio = (fromIntegral v) / (fromIntegral size)
+          ratioa = ratio * sizea
+  fractionBetween val_min val_max val = val / (val_max - val_min)
 
 data ObjectState where
   SButton :: ObjectState
   STextLabel :: ObjectState
   STextInput :: String -> ObjectState
   SCheckBox :: Bool -> ObjectState
-  SSlider :: Slidable s => s -> ObjectState
+  SSlider :: Slidable s => s -> Float -> ObjectState
     -- deriving Show
 $(makePrisms ''ObjectState)
 
@@ -52,7 +61,7 @@ data Input = Input {
   }
 $(makeLenses ''Input)
 
-data HamGuiData u = HamGuiData {
+data HamGuiData = HamGuiData {
     _vertexDataL :: MV.IOVector CFloat,
     _elemDataL :: MV.IOVector CInt,
     _vI :: CInt,
@@ -63,10 +72,8 @@ data HamGuiData u = HamGuiData {
     _inputs :: Input,
     _cursorPosition :: ScreenPositionProjected,
     _bitMapFont :: BitMapFont,
-    _focusedObject :: Maybe ObjectId,
-    _userData :: u
+    _focusedObject :: Maybe ObjectId
   }
 $(makeLenses ''HamGuiData)
 
-type HamGuiU u a = StateT (HamGuiData u) IO a
-type HamGui a = forall u. HamGuiU u a
+type HamGui a = StateT HamGuiData IO a
