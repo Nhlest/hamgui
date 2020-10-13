@@ -28,6 +28,10 @@ default-extensions:
 - QuasiQuotes
 - FlexibleContexts
 - OverloadedLists
+- RankNTypes
+- TypeFamilies
+- ScopedTypeVariables
+- TypeOperators 
 
 library:
   source-dirs: src

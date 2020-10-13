@@ -1,4 +1,3 @@
-{-# LANGUAGE RankNTypes, TypeFamilies, ScopedTypeVariables, TypeOperators #-}
 module Graphics.UI.HamGui.HamGui where
 
 import qualified Data.Vector.Storable.Mutable as MV
@@ -10,7 +9,6 @@ import Control.Lens
 import Foreign.Ptr
 import Data.Maybe
 import Data.Type.Equality
--- import Data.Typeable
 import Type.Reflection
 
 import Graphics.UI.HamGui.BitMapFont
@@ -39,12 +37,13 @@ uploadMouseState a b = do
   inputs . mousePos .= Just a
   inputs . mouseKeyState .= Just b
 
+-- TODO: check this function/mechanism
 uploadAlphaNums :: String -> HamGui ()
 uploadAlphaNums a = do
   inputs . alphaNumPressed .= Just a
 
 initHamGuiData :: MV.IOVector CFloat -> MV.IOVector CInt -> HamGuiData
-initHamGuiData vMV eMV = HamGuiData vMV eMV 0 0 0 (SPP (-900) 0) M.empty (Input Nothing Nothing Nothing) (SPP 0 0) emptyFont Nothing
+initHamGuiData vMV eMV = HamGuiData vMV eMV 0 0 0 (SPP (-890) 0) M.empty (Input Nothing Nothing Nothing) (SPP 0 0) emptyFont Nothing
 
 clearBuffers :: HamGui ()
 clearBuffers = do
@@ -130,6 +129,7 @@ addText str (SPT x y) (SPT w h) = do
          let f = bmf ^. charSet
          let char = M.lookup ch f
          case char of
+         -- Checking for character 2 times, can be fixed probably
            Nothing -> liftIO $ fail "pepega character not found"
            Just (CharDef _cx _cy sx sy ox oy ax ay) -> do
              addGlyph ch (SPT (x+ox*w) (y+oy*h)) (SPT (sx*w) (sy*h))
@@ -179,6 +179,7 @@ genericObjectInputCheck oId = do
   when justClickedStatus $ focusedObject .= Just oId
   pure (justClickedStatus, clickedStatus, mouseM)
 
+-- TODO: Weird function, probably can be refactored to something better
 fitBoxOfSize :: ScreenPositionProjected -> HamGui (ScreenPositionProjected, ScreenPositionProjected, ScreenPositionTotal, ScreenPositionTotal)
 fitBoxOfSize box@(SPP w h) = do
   cursorP@(SPP cx cy) <- use cursorPosition
@@ -187,6 +188,7 @@ fitBoxOfSize box@(SPP w h) = do
   cursorPosition .= (SPP cx $ cy - h - 10)
   pure (cursorP, box, cursor, boxSizeT)
 
+-- TODO: Generalize these functions
 isObjFocused :: ObjectId -> HamGui Bool
 isObjFocused oId = fromMaybe False <$> ((fmap . fmap) ((==) oId) $ use focusedObject)
 
@@ -198,6 +200,7 @@ isObjHeld oId = do
 updateObjData :: ObjectId -> (ScreenPositionProjected, ScreenPositionProjected) -> ObjectState -> HamGui ()
 updateObjData oId box st = objectData %= M.insertWith (\(Object a _ _) (Object _ b _) -> Object a b st) oId (Object box Inert st)
 
+-- TODO: Styles / style colors
 getPrimaryColor isHeld isFocused = pure $
   (if isHeld         then (RGBC 0.0 0.0 1.0)
    else if isFocused then (RGBC 0.0 0.0 0.5)
@@ -205,6 +208,7 @@ getPrimaryColor isHeld isFocused = pure $
 
 getSecondaryColor _isHeld _isFocused = pure (RGBC 0.5 1.0 0.0)
 
+-- TODO: Refactor this
 fitTextLabel :: ScreenPositionProjected -> ScreenPositionProjected -> HamGui (ScreenPositionTotal)
 fitTextLabel (SPP rx ry) _rectsize = toSPT (SPP ((fromIntegral rx) + 10) $ (fromIntegral ry) + 10)
 
@@ -217,7 +221,7 @@ button oId label = do
   primaryColor                       <- getPrimaryColor isHeld isFocused
   secondaryColor                     <- getSecondaryColor isHeld isFocused
   textPos                            <- fitTextLabel rect rectsize
-  updateObjData     oId (rect, rectsize) SButton
+  updateObjData oId (rect, rectsize) SButton
   addRectWithBorder rectT rectsizeT primaryColor secondaryColor
   addText label textPos (SPT 2 2) -- TODO: This is not SPT
   pure clicked
@@ -233,7 +237,7 @@ checkbox oId = do
   textPos                            <- fitTextLabel rect rectsize
   object                             <- M.lookup oId <$> use objectData
   let state                          = fromMaybe False $ object ^? _Just . privateState . _SCheckBox
-  let newstate = if clicked then not state else state
+  let newstate = if clicked then not state else state -- TODO: make state transitions more cute
   updateObjData     oId (rect, rectsize) (SCheckBox newstate)
   addRectWithBorder rectT rectsizeT primaryColor secondaryColor
   when state $ addText "X" textPos (SPT 2 2) -- TODO: This is not SPT
@@ -249,6 +253,7 @@ textInput oId = do
   secondaryColor                     <- getSecondaryColor isHeld isFocused
   textPos                            <- fitTextLabel rect rectsize
   object                             <- M.lookup oId <$> use objectData
+  -- TODO:                              vvvvvvvvv make this look better
   charsFromKeyboard                  <- fromMaybe "" <$> use (inputs . alphaNumPressed)
   let labelText                       = fromMaybe "" $ object ^? _Just . privateState . _STextInput
   let newLabel = if isFocused then labelText ++ charsFromKeyboard else labelText
@@ -274,15 +279,16 @@ util _ = typeRep::(TypeRep a)
 
 slider :: forall a. (Slidable a, Typeable a, Show a) => ObjectId -> a -> a -> a -> HamGui a
 slider oId value val_min val_max = do
-  (_, clicked, clickedPos)              <- genericObjectInputCheck oId
-  (rect@(SPP px py), rectsize@(SPP sx sy), rectT@(SPT cornerx cornery), rectsizeT@(SPT sizex sizey)) <- fitBoxOfSize (SPP 250 20)
-  mPos@(SPP mx my)                   <- fromMaybe (SPP 0 0) <$> use (inputs . mousePos)
+  (_, clicked, SPP mx _)             <- genericObjectInputCheck oId
+  (rect@(SPP px py), rectsize@(SPP sx _), rectT@(SPT cornerx _), rectsizeT@(SPT sizex sizey)) 
+                                     <- fitBoxOfSize (SPP 250 20)
   isFocused                          <- isObjFocused oId
   isHeld                             <- isObjHeld oId
   primaryColor                       <- getPrimaryColor isHeld isFocused
   secondaryColor                     <- getSecondaryColor isHeld isFocused
   objects                            <- use objectData
   let object = objects ^. at oId ^? _Just . privateState
+  -- TODO: Yep
   (p,new_val) <- case clicked of
         True -> do
           let new_val = slideBetween px (px + sx) mx val_min val_max
@@ -306,9 +312,6 @@ slider oId value val_min val_max = do
                     Nothing -> failsafe
                 _ ->           failsafe
             Nothing ->         failsafe
-              
-  pure ()
-      
   addRect rectT rectsizeT secondaryColor skipUV skipUV
   re <- toSPT (SPP (p-10) py)
   addRect re (SPT 0.1 sizey) primaryColor skipUV skipUV
