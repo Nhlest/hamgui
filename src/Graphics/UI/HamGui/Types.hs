@@ -6,6 +6,7 @@ import qualified Data.Map.Strict as M
 import Control.Monad.State.Strict
 import Foreign.C.Types
 import Control.Lens
+import Data.Typeable
 
 import Graphics.UI.HamGui.BitMapFont
 
@@ -38,12 +39,34 @@ instance Slidable Float where
           ratioa = ratio * sizea
   fractionBetween val_min val_max val = val / (val_max - val_min)
 
+instance Slidable Int where
+  slideBetween lower_bound higher_bound cursor min max = ratioa + min
+    where size = higher_bound - lower_bound
+          sizea = max - min
+          v = cursor - lower_bound
+          ratio::Float
+          ratio = (fromIntegral v) / (fromIntegral size)
+          ratioa = floor $ ratio * fromIntegral sizea
+  fractionBetween val_min val_max val = (fromIntegral val) / (fromIntegral (val_max - val_min))
+
+data TypeSlider = TInt | TFloat deriving (Typeable, Show)
+
+instance Slidable TypeSlider where
+  slideBetween lower_bound higher_bound cursor _ _ = if ratio > 0.5 then TFloat else TInt
+    where size = higher_bound - lower_bound
+          v = cursor - lower_bound
+          ratio::Float
+          ratio = (fromIntegral v) / (fromIntegral size)
+  fractionBetween _ _ val = case val of
+    TInt -> 0.0
+    TFloat -> 1.0
+
 data ObjectState where
   SButton :: ObjectState
   STextLabel :: ObjectState
   STextInput :: String -> ObjectState
   SCheckBox :: Bool -> ObjectState
-  SSlider :: Slidable s => s -> Float -> ObjectState
+  SSlider :: (Slidable s, Typeable s, Show s) => s -> ObjectState
     -- deriving Show
 $(makePrisms ''ObjectState)
 

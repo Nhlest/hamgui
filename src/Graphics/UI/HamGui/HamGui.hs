@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, TypeFamilies, ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes, TypeFamilies, ScopedTypeVariables, TypeOperators #-}
 module Graphics.UI.HamGui.HamGui where
 
 import qualified Data.Vector.Storable.Mutable as MV
@@ -9,6 +9,9 @@ import Foreign.C.Types
 import Control.Lens
 import Foreign.Ptr
 import Data.Maybe
+import Data.Type.Equality
+-- import Data.Typeable
+import Type.Reflection
 
 import Graphics.UI.HamGui.BitMapFont
 import Graphics.UI.HamGui.Types
@@ -266,7 +269,10 @@ textLabel oId label = do
   addText label textPos (SPT 2 2)
   pure ()
 
-slider :: Slidable a => ObjectId -> a -> a -> a -> HamGui Bool
+util :: forall a. (Slidable a, Typeable a, Show a) => a -> TypeRep a
+util _ = typeRep::(TypeRep a)
+
+slider :: forall a. (Slidable a, Typeable a, Show a) => ObjectId -> a -> a -> a -> HamGui a
 slider oId value val_min val_max = do
   (_, clicked, clickedPos)              <- genericObjectInputCheck oId
   (rect@(SPP px py), rectsize@(SPP sx sy), rectT@(SPT cornerx cornery), rectsizeT@(SPT sizex sizey)) <- fitBoxOfSize (SPP 250 20)
@@ -277,29 +283,34 @@ slider oId value val_min val_max = do
   secondaryColor                     <- getSecondaryColor isHeld isFocused
   objects                            <- use objectData
   let object = objects ^. at oId ^? _Just . privateState
-  p <- case clicked of
+  (p,new_val) <- case clicked of
         True -> do
           let new_val = slideBetween px (px + sx) mx val_min val_max
           let percentage = fractionBetween val_min val_max new_val
-          updateObjData oId (rect, rectsize) $ SSlider new_val percentage
-          pure $ floor $ percentage * (fromIntegral sx) + (fromIntegral px)
+          updateObjData oId (rect, rectsize) $ SSlider new_val
+          pure $ (floor $ percentage * (fromIntegral sx) + (fromIntegral px), new_val)
         False -> do
+          let failsafe = do
+                let percentage = fractionBetween val_min val_max value
+                updateObjData oId (rect, rectsize) $ SSlider value
+                pure $ (floor $ percentage * (fromIntegral sx) + (fromIntegral px), value)
           case object of
             Just v -> do
-              updateObjData oId (rect, rectsize) $ v
-              let percentage = case v of
-                    SSlider _ p -> p
-                    _ -> 0.0
-              pure $ floor $ percentage * (fromIntegral sx) + (fromIntegral px)
-            Nothing -> do
-              let percentage = fractionBetween val_min val_max value
-              updateObjData oId (rect, rectsize) $ SSlider value percentage
-              pure $ floor $ percentage * (fromIntegral sx) + (fromIntegral px)
+              case v of 
+                SSlider v2 -> do
+                  case testEquality (typeRep::TypeRep a) (util v2) of
+                    Just Refl -> do
+                      let percentage = fractionBetween val_min val_max v2
+                      updateObjData oId (rect, rectsize) $ SSlider v2
+                      pure $ (floor $ percentage * (fromIntegral sx) + (fromIntegral px), v2)
+                    Nothing -> failsafe
+                _ ->           failsafe
+            Nothing ->         failsafe
               
   pure ()
       
   addRect rectT rectsizeT secondaryColor skipUV skipUV
   re <- toSPT (SPP (p-10) py)
   addRect re (SPT 0.1 sizey) primaryColor skipUV skipUV
-  -- addText label textPos (SPT 2 2) -- TODO: This is not SPT
-  pure True
+  addText (show new_val) (SPT (cornerx+sizex+0.1) (re ^. _SPT . _2)) (SPT 2 2) -- TODO: This is not SPT
+  pure new_val
