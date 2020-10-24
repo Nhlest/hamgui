@@ -6,7 +6,7 @@ import qualified Data.Map.Strict as M
 import Control.Monad.State.Strict
 import Foreign.C.Types
 import Control.Lens
-import Data.Typeable
+import Type.Reflection
 
 import Graphics.UI.HamGui.BitMapFont
 
@@ -82,8 +82,19 @@ data HamGuiData = HamGuiData {
     _inputs :: Input,
     _cursorPosition :: ScreenPositionProjected,
     _bitMapFont :: BitMapFont,
-    _focusedObject :: Maybe ObjectId
+    _focusedObject :: Maybe ObjectId,
+    _heldObject :: Maybe ObjectId
   }
 $(makeLenses ''HamGuiData)
+
+data GenericMouseInputResults = 
+    ResultOnClickStart ScreenPositionProjected
+  | ResultOnClickEnd   ScreenPositionProjected
+  | ResultOnClickHeld  ScreenPositionProjected
+  | ResultOnInert
+$(makePrisms ''GenericMouseInputResults)
+
+typeOf' :: forall a. (Slidable a, Typeable a, Show a) => a -> TypeRep a
+typeOf' _ = typeRep::(TypeRep a)
 
 type HamGui a = StateT HamGuiData IO a
