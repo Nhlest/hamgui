@@ -39,6 +39,11 @@ instance Slidable Float where
           ratioa = ratio * sizea
   fractionBetween val_min val_max val = val / (val_max - val_min)
 
+slideBetweenClamped :: Slidable a => Int -> Int -> Int -> a -> a -> a
+slideBetweenClamped a b c m x = slideBetween a b cclam m x
+  where cclam = if c > b then b else
+                if c < a then a else c
+
 instance Slidable Int where
   slideBetween lower_bound higher_bound cursor min max = ratioa + min
     where size = higher_bound - lower_bound
@@ -71,6 +76,16 @@ data Input = Input {
   }
 $(makeLenses ''Input)
 
+data Window = Window {
+    _windowPos :: ScreenPositionProjected,
+    _windowSize :: ScreenPositionProjected,
+    _windowTitle :: String,
+    _windowStatus :: UIState
+  }
+$(makeLenses ''Window)
+
+newtype WindowId = WindowId String deriving (Eq, Ord)
+
 data HamGuiData = HamGuiData {
     _vertexDataL :: MV.IOVector CFloat,
     _elemDataL :: MV.IOVector CInt,
@@ -83,7 +98,9 @@ data HamGuiData = HamGuiData {
     _cursorPosition :: ScreenPositionProjected,
     _bitMapFont :: BitMapFont,
     _focusedObject :: Maybe ObjectId,
-    _heldObject :: Maybe ObjectId
+    _heldObject :: Maybe ObjectId,
+    _windows :: M.Map WindowId Window,
+    _windowStack :: [WindowId]
   }
 $(makeLenses ''HamGuiData)
 

@@ -43,7 +43,7 @@ uploadAlphaNums a = do
   inputs . alphaNumPressed .= Just a
 
 initHamGuiData :: MV.IOVector CFloat -> MV.IOVector CInt -> HamGuiData
-initHamGuiData vMV eMV = HamGuiData vMV eMV 0 0 0 (SPP (-890) 0) M.empty (Input Nothing Nothing Nothing) (SPP 0 0) emptyFont Nothing Nothing
+initHamGuiData vMV eMV = HamGuiData vMV eMV 0 0 0 (SPP (-890) 0) M.empty (Input Nothing Nothing Nothing) (SPP 0 0) emptyFont Nothing Nothing M.empty []
 
 clearBuffers :: HamGui ()
 clearBuffers = do
@@ -53,7 +53,7 @@ clearBuffers = do
   -- TODO: make window position start from top left corner
   cursorPosition .= (SPP 0 900)
 
-processInputs :: HamGui ()
+processInputs :: HamGui () -- Is it really needed?
 processInputs = do
   pure ()
 
@@ -61,6 +61,40 @@ newFrame :: HamGui ()
 newFrame = do
   clearBuffers
   processInputs
+
+windowStart :: WindowId -> String -> HamGui ()
+windowStart wId wTitle = do
+  w <- use $ windows . at wId
+  Just (Window (SPP wx wy) (SPP sx sy) wt _) <- case w of
+    Nothing  -> windows . at wId <.= Just (Window (SPP 0 0) (SPP 500 800) wTitle Inert)
+    Just w@(Window wpos@(SPP wx wy) wsize@(SPP wsx wsy) wt wstatus) -> do
+      input <- use $ inputs . mousePos
+      lmb <- uses (inputs . mouseKeyState) $ (preview $ _Just . _1)
+      new_w <- case (input, lmb) of
+        (Just mouse@(SPP mx my), Just True) -> do
+          case wstatus of
+            MouseHeld (SPP px py) -> do
+                let mdeltax = mx - px
+                let mdeltay = my - py
+                pure $ w & windowPos .~ SPP (wx + mdeltax) (wy + mdeltay) & windowStatus .~ MouseHeld mouse
+            _                     -> do
+              cursorPosition .= SPP wx (wy+wsy-50)
+              (rect, rectsize, rectT@(SPT tx ty), rectsizeT@(SPT tsx tsy)) <- fitBoxOfSize (SPP wsx 100)
+              if checkIfPointIsInsideBox mouse (rect, rectsize) 
+                then pure $ w & windowStatus .~ MouseHeld mouse
+                else pure $ w & windowStatus .~ Inert
+              -- pure $ Window wpos wsize wt (MouseHeld $ SPP mx my)
+        (_, _) -> pure $ w & windowStatus .~ Inert
+      windows . at wId .= Just new_w
+      pure $ Just new_w
+
+  cursorPosition .= SPP wx wy
+  (rect, rectsize, rectT@(SPT tx ty), rectsizeT@(SPT tsx tsy)) <- fitBoxOfSize (SPP sx sy)
+  addRectWithBorder rectT rectsizeT (RGBC 0.1 0.1 0.1) (RGBC 0.9 0.9 0.9)
+  addRectWithBorder (SPT tx (ty + tsy - 0.1)) (SPT tsx 0.1) (RGBC 0.2 0.2 0.2) (RGBC 0.9 0.9 0.9)
+  addText wt (SPT tx (ty + tsy - 0.08)) (SPT 2 2) -- TODO: This is not SPT
+  cursorPosition .= (SPP (wx + 30) (wy+700))
+  pure ()
 
 -- TODO: pass via Strict Storable struct
 addRect :: ScreenPositionTotal -> ScreenPositionTotal -> RGBColor -> UVCoordinate -> UVCoordinate -> HamGui ()
@@ -319,7 +353,7 @@ slider oId value val_min val_max = do
   -- TODO: Yep
   (p,new_val) <- case clickedx of
         Just mx -> do
-          let new_val = slideBetween px (px + sx) mx val_min val_max
+          let new_val = slideBetweenClamped px (px + sx) mx val_min val_max
           let percentage = fractionBetween val_min val_max new_val
           updateObjData oId (rect, rectsize) $ SSlider new_val
           pure $ (floor $ percentage * (fromIntegral sx) + (fromIntegral px), new_val)
