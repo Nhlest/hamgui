@@ -14,23 +14,31 @@ import Graphics.UI.HamGui.BitMapFont
 
 data Property = Property String String deriving Show
 data Character = Character {
-    _charCode :: Int,
+    _charCode   :: Int,
     _charSwidth :: (Int, Int),
     _charDwidth :: (Int, Int),
-    _charBbx :: (Int, Int, Int, Int),
+    _charBbx    :: (Int, Int, Int, Int),
     _charBitmap :: [Int]
   } deriving (Show, Eq) -- TODO: Move to Types maybe? (Or BMF.Types (!))
 
-bdfParser :: GenParser Char st [Character]
+bdfParser :: GenParser Char st (Int, Int, [Character])
 bdfParser = do
   string "STARTFONT 2.1\n"
+  manyTill (anyChar) $ try $ string "FONTBOUNDINGBOX "
+  many digitOrMinus
+  many space
+  by <- read <$> many digitOrMinus
+  many space
+  many digitOrMinus
+  many space
+  oy <- read <$> many digitOrMinus
   manyTill (anyChar) $ try $ string "STARTPROPERTIES"
   manyTill (anyChar) $ try newline
   _ <- manyTill propParser $ try $ string "ENDPROPERTIES\n"
   string "CHARS "
   manyTill (anyChar) $ try newline
   chars <- manyTill charParser $ try $ string "ENDFONT\n"
-  pure chars
+  pure (by, oy, chars)
  where propParser = do
          head <$> sepBy (do
                   pname <- manyTill (anyChar) $ try (char ' ')
@@ -77,13 +85,12 @@ tryToFit squareSide_p chars_p@((Character _ _ _ (_, bh, _, _) _):_) =
             go (M.insert (toEnum ch)
             (let ss = fromIntegral squareSide
                  cx = fromIntegral currentWidthCursor
-                 cy = fromIntegral $ length before+1
+                 cy = fromIntegral $ length before + (currentRowHeight - bh)
                  sx = fromIntegral bw
                  sy = fromIntegral bh
-                 sq = fromIntegral squareSide
-             in CharDef (cx/ss) (cy/ss) (sx/ss) (sy/ss)
-                        (fromIntegral bx/sq) (fromIntegral by/sq)
-                        (fromIntegral dx/sq) (fromIntegral dy/sq)) characterMap)
+             in CharDef (cx/ss) (cy/ss) (sx/ss) (sy/ss) sx sy
+                        (fromIntegral bx) (fromIntegral by)
+                        (fromIntegral dx) (fromIntegral dy)) characterMap)
              squareSide xs (before ++ [let row = current !! ix in row ++ [get bm c ix currentRowHeight bw | c <- [0..bw-1]] | ix <- [0..length current-1]]) (currentWidthCursor+bw) currentRowHeight
         get bm x y h w = if y < (h-char_height) then skip else
           if testBit (bm !! (y-(h-char_height))) (w-x-1) then fill else empty
@@ -96,7 +103,7 @@ loadBDF :: FilePath -> IO (BitMapFont)
 loadBDF path = do
   bdfImage <- Text.unpack <$> Text.readFile path
   let result = parse bdfParser "" bdfImage
-  chars <- case result of
+  (bounding_height, bounding_offset, chars) <- case result of
     Left a -> print a >> fail "pepega"
     Right b -> pure b
   let sortedChars = sortBy (\(Character _ (_, _) (_, _) (_, bh, _, _)  _)
@@ -107,6 +114,7 @@ loadBDF path = do
   pure $ BitMapFont {
       _charSet = cset,
       _squareSide = side,
-      _rgbaData = V.fromList $ concatenate,
-      _debug = ""
+      _boundingHeigh = bounding_height,
+      _boundingOffset = bounding_offset,
+      _rgbaData = V.fromList $ concatenate
     }
